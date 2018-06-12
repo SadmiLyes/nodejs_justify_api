@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const bodyParser = require('body-parser');
-router.use(bodyParser.urlencoded({ extended: false }));
+router.use(bodyParser.urlencoded({
+    limit: '5mb',
+    parameterLimit: 100000,
+    extended: false
+}));
 router.use(bodyParser.json());
 const User = require('./models/User');
 const VerifyToken = require('./helpers/VerifyToken');
@@ -10,7 +14,6 @@ const config = require('../config/config');
 const justify = require("./helpers/justify");
 
 const {wordCount, rateLimitCount} = require('./helpers/rateLimit');
-
 router.post('/token', (req,res, next) => {
     User.findOne({ email: req.body.email }, function (err, user) {
         if (err) return res.status(500).send('Error on the server.');
@@ -56,9 +59,6 @@ router.post('/justify',VerifyToken // check for token validity
     }else{
         next();
     }
-},(req,res,next) => { // check if word per day != 0
-    if (req.user.wordPerDay === 0) return res.status(402).send('Payment Required.');
-    next();
 },(req,res,next) => {
     if (req.is('text/*')) {
         req.text = '';
@@ -68,6 +68,9 @@ router.post('/justify',VerifyToken // check for token validity
     } else {
         return res.status(500).send("invalid input type");
     }
+},(req,res,next) => { // check if word per day != 0
+        if (rateLimitCount(req.user.wordPerDay, wordCount(req.text)) <= 0) return res.status(402).send('Payment Required.');
+        next();
 },(req,res,next) => { // count and update the wordperday value
     User.findByIdAndUpdate(req.user.id,
         { $set: { wordPerDay: rateLimitCount(req.user.wordPerDay, wordCount(req.text)) }},
